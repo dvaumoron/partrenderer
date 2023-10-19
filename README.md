@@ -27,7 +27,7 @@ The first call with :
 
 - componentsPath indicate a directory to walk in order to load all component templates
 - viewsPath indicate a directory to walk in order to load all view templates (which can see components)
-- fileExt can be ".html" (a value without a starting dot have one added automatically)
+- fileExt can be ".html" (filter readed files, a value without a starting dot have one added automatically)
 - customFuncs is a [FuncMap](https://pkg.go.dev/text/template#FuncMap) to register your custom template functions
 
 The second call has the same signature as [Template.ExecuteTemplate](https://pkg.go.dev/text/template#Template.ExecuteTemplate) where viewName has no extention ("index" for an index.html file) and can have a part selector (like in "index#body", without this selector "root" is used).
