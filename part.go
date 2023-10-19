@@ -21,7 +21,6 @@ package partrenderer
 import (
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -39,7 +38,9 @@ type PartRenderer struct {
 }
 
 func MakePartRenderer(componentsPath string, viewsPath string, fileExt string, funcs template.FuncMap) (PartRenderer, error) {
-	fileExt = cleanExt(fileExt)
+	if fileExt != "" && fileExt[0] != '.' {
+		fileExt = "." + fileExt
+	}
 
 	components, err := loadComponents(componentsPath, fileExt, funcs)
 	if err != nil {
@@ -54,21 +55,19 @@ func MakePartRenderer(componentsPath string, viewsPath string, fileExt string, f
 }
 
 func (r PartRenderer) ExecuteTemplate(w io.Writer, viewName string, data any) error {
+	partName := r.RootName
 	if splitted := strings.Split(viewName, r.Separator); len(splitted) > 1 {
-		return r.views[splitted[0]].ExecuteTemplate(w, splitted[1], data)
-	} else {
-		return r.views[viewName].ExecuteTemplate(w, r.RootName, data)
+		viewName, partName = splitted[0], splitted[1]
 	}
+	return r.views[viewName].ExecuteTemplate(w, partName, data)
 }
 
 func loadComponents(componentsPath string, fileExt string, funcs template.FuncMap) (*template.Template, error) {
 	var filepaths []string
 	fileExtLen := len(fileExt)
 	err := filepath.WalkDir(componentsPath, func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			if path[len(path)-fileExtLen:] == fileExt {
-				filepaths = append(filepaths, path)
-			}
+		if err == nil && !d.IsDir() && path[len(path)-fileExtLen:] == fileExt {
+			filepaths = append(filepaths, path)
 		}
 		return err
 	})
@@ -92,28 +91,13 @@ func loadViews(viewsPath string, fileExt string, components *template.Template) 
 	fileExtLen := len(fileExt)
 	views := map[string]*template.Template{}
 	err = filepath.WalkDir(viewsPath, func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			if end := len(path) - fileExtLen; path[end:] == fileExt {
-				var t *template.Template
-				if t, err = components.Clone(); err == nil {
-					var data []byte
-					if data, err = os.ReadFile(path); err == nil {
-						_, err = t.Parse(string(data))
-						views[path[inSize:end]] = t
-					}
-				}
-			}
+		if end := len(path) - fileExtLen; err == nil && !d.IsDir() && path[end:] == fileExt {
+			t, _ := components.Clone() // here error is always nil
+			_, err = t.ParseFiles(path)
+			views[path[inSize:end]] = t
 		}
 		return err
 	})
 	// not supposed to return data on error, but it's a private function
 	return views, err
-}
-
-// ensure start with a dot
-func cleanExt(ext string) string {
-	if ext != "" && ext[0] != '.' {
-		ext = "." + ext
-	}
-	return ext
 }
