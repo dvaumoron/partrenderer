@@ -4,7 +4,7 @@ Library to load several [go template](https://pkg.go.dev/text/template) decompos
 
 ## Getting started
 
-In order to use PartRenderer in your project Cornucopia (with the go langage already installed), you can use the command:
+In order to use PartRenderer in your project Cornucopia (with the go langage already installed), you can use the command :
 
     go install github.com/dvaumoron/partrenderer@latest
 
@@ -14,7 +14,7 @@ Then you can import it :
 import "github.com/dvaumoron/partrenderer"
 ```
 
-And use it in two step:
+And use it in two step :
 
 ```Go
 // parse templates
@@ -30,4 +30,6 @@ The first call with :
 - fileExt can be ".html" (a value without a starting dot have one added automatically)
 - customFuncs is a [FuncMap](https://pkg.go.dev/text/template#FuncMap) to register your custom template functions
 
-The second call has the same signature as [Template.ExecuteTemplate](https://pkg.go.dev/text/template#Template.ExecuteTemplate) where viewName has no extention ("index" for an index.html file) and can have a part selector (like in "index#body", without this selector "root" is used)
+The second call has the same signature as [Template.ExecuteTemplate](https://pkg.go.dev/text/template#Template.ExecuteTemplate) where viewName has no extention ("index" for an index.html file) and can have a part selector (like in "index#body", without this selector "root" is used).
+
+Examples of templates in [componentsPath](https://github.com/dvaumoron/puzzletest/tree/main/templatedata/templates/components) and [viewsPath](https://github.com/dvaumoron/puzzletest/tree/main/templatedata/templates/views).
