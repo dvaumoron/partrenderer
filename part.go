@@ -41,13 +41,14 @@ func MakePartRenderer(componentsPath string, viewsPath string, fileExt string, f
 	if fileExt != "" && fileExt[0] != '.' {
 		fileExt = "." + fileExt
 	}
+	fileExtLen := len(fileExt)
 
-	components, err := loadComponents(componentsPath, fileExt, funcs)
+	components, err := loadComponents(componentsPath, fileExt, fileExtLen, funcs)
 	if err != nil {
 		return PartRenderer{}, err
 	}
 
-	views, err := loadViews(viewsPath, fileExt, components)
+	views, err := loadViews(viewsPath, fileExt, fileExtLen, components)
 	if err != nil {
 		return PartRenderer{}, err
 	}
@@ -62,9 +63,8 @@ func (r PartRenderer) ExecuteTemplate(w io.Writer, viewName string, data any) er
 	return r.views[viewName].ExecuteTemplate(w, partName, data)
 }
 
-func loadComponents(componentsPath string, fileExt string, funcs template.FuncMap) (*template.Template, error) {
+func loadComponents(componentsPath string, fileExt string, fileExtLen int, funcs template.FuncMap) (*template.Template, error) {
 	var filepaths []string
-	fileExtLen := len(fileExt)
 	err := filepath.WalkDir(componentsPath, func(path string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && path[len(path)-fileExtLen:] == fileExt {
 			filepaths = append(filepaths, path)
@@ -78,7 +78,7 @@ func loadComponents(componentsPath string, fileExt string, funcs template.FuncMa
 	return template.New("").Funcs(funcs).ParseFiles(filepaths...)
 }
 
-func loadViews(viewsPath string, fileExt string, components *template.Template) (map[string]*template.Template, error) {
+func loadViews(viewsPath string, fileExt string, fileExtLen int, components *template.Template) (map[string]*template.Template, error) {
 	viewsPath, err := filepath.Abs(viewsPath)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,6 @@ func loadViews(viewsPath string, fileExt string, components *template.Template) 
 	}
 
 	inSize := len(viewsPath)
-	fileExtLen := len(fileExt)
 	views := map[string]*template.Template{}
 	err = filepath.WalkDir(viewsPath, func(path string, d fs.DirEntry, err error) error {
 		if end := len(path) - fileExtLen; err == nil && !d.IsDir() && path[end:] == fileExt {
