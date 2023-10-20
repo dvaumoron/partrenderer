@@ -24,12 +24,50 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/spf13/afero"
 )
 
 const (
+	defaultExt       = ".html"
+	defaultExtLen    = len(defaultExt)
 	defaultSeparator = "#"
 	defaultRootName  = "root"
 )
+
+type loadOptions struct {
+	fs         afero.Fs
+	fileExt    string
+	fileExtLen int
+	funcs      template.FuncMap
+}
+
+type LoadOption func(loadOptions) loadOptions
+
+func WithFs(fs afero.Fs) LoadOption {
+	return func(lo loadOptions) loadOptions {
+		lo.fs = fs
+		return lo
+	}
+}
+
+func WithFileExt(ext string) LoadOption {
+	return func(lo loadOptions) loadOptions {
+		if ext != "" && ext[0] != '.' {
+			ext = "." + ext
+		}
+		lo.fileExt = ext
+		lo.fileExtLen = len(ext)
+		return lo
+	}
+}
+
+func WithFuncs(customFuncs template.FuncMap) LoadOption {
+	return func(lo loadOptions) loadOptions {
+		lo.funcs = customFuncs
+		return lo
+	}
+}
 
 type PartRenderer struct {
 	views     map[string]*template.Template
@@ -37,18 +75,18 @@ type PartRenderer struct {
 	RootName  string
 }
 
-func MakePartRenderer(componentsPath string, viewsPath string, fileExt string, funcs template.FuncMap) (PartRenderer, error) {
-	if fileExt != "" && fileExt[0] != '.' {
-		fileExt = "." + fileExt
+func MakePartRenderer(componentsPath string, viewsPath string, opts ...LoadOption) (PartRenderer, error) {
+	options := loadOptions{fs: afero.NewOsFs(), fileExt: defaultExt, fileExtLen: defaultExtLen}
+	for _, optionModifier := range opts {
+		options = optionModifier(options)
 	}
-	fileExtLen := len(fileExt)
 
-	components, err := loadComponents(componentsPath, fileExt, fileExtLen, funcs)
+	components, err := loadComponents(componentsPath, options)
 	if err != nil {
 		return PartRenderer{}, err
 	}
 
-	views, err := loadViews(viewsPath, fileExt, fileExtLen, components)
+	views, err := loadViews(viewsPath, components, options)
 	if err != nil {
 		return PartRenderer{}, err
 	}
@@ -63,22 +101,19 @@ func (r PartRenderer) ExecuteTemplate(w io.Writer, viewName string, data any) er
 	return r.views[viewName].ExecuteTemplate(w, partName, data)
 }
 
-func loadComponents(componentsPath string, fileExt string, fileExtLen int, funcs template.FuncMap) (*template.Template, error) {
-	var filepaths []string
-	err := filepath.WalkDir(componentsPath, func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && path[len(path)-fileExtLen:] == fileExt {
-			filepaths = append(filepaths, path)
+func loadComponents(componentsPath string, options loadOptions) (*template.Template, error) {
+	components := template.New("").Funcs(options.funcs)
+	err := afero.Walk(options.fs, componentsPath, func(path string, fi fs.FileInfo, err error) error {
+		if err == nil && !fi.IsDir() && path[len(path)-options.fileExtLen:] == options.fileExt {
+			err = parseOne(options.fs, path, components)
 		}
 		return err
 	})
-
-	if err != nil {
-		return nil, err
-	}
-	return template.New("").Funcs(funcs).ParseFiles(filepaths...)
+	// not supposed to return data on error, but it's a private function
+	return components, err
 }
 
-func loadViews(viewsPath string, fileExt string, fileExtLen int, components *template.Template) (map[string]*template.Template, error) {
+func loadViews(viewsPath string, components *template.Template, options loadOptions) (map[string]*template.Template, error) {
 	viewsPath, err := filepath.Abs(viewsPath)
 	if err != nil {
 		return nil, err
@@ -89,14 +124,22 @@ func loadViews(viewsPath string, fileExt string, fileExtLen int, components *tem
 
 	inSize := len(viewsPath)
 	views := map[string]*template.Template{}
-	err = filepath.WalkDir(viewsPath, func(path string, d fs.DirEntry, err error) error {
-		if end := len(path) - fileExtLen; err == nil && !d.IsDir() && path[end:] == fileExt {
+	err = afero.Walk(options.fs, viewsPath, func(path string, fi fs.FileInfo, err error) error {
+		if end := len(path) - options.fileExtLen; err == nil && !fi.IsDir() && path[end:] == options.fileExt {
 			t, _ := components.Clone() // here error is always nil
-			_, err = t.ParseFiles(path)
+			err = parseOne(options.fs, path, t)
 			views[path[inSize:end]] = t
 		}
 		return err
 	})
 	// not supposed to return data on error, but it's a private function
 	return views, err
+}
+
+func parseOne(fs afero.Fs, path string, tmpl *template.Template) error {
+	data, err := afero.ReadFile(fs, path)
+	if err == nil {
+		_, err = tmpl.New(path).Parse(string(data))
+	}
+	return err
 }

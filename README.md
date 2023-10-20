@@ -18,7 +18,7 @@ And use it in two step :
 
 ```Go
 // parse templates
-renderer, err := partrenderer.MakePartRenderer(componentsPath, viewsPath, fileExt, customFuncs)
+renderer, err := partrenderer.MakePartRenderer(componentsPath, viewsPath)
 // and use them
 err = renderer.ExecuteTemplate(writer, viewName, data)
 ```
@@ -27,8 +27,6 @@ The first call with :
 
 - componentsPath indicate a directory to walk in order to load all component templates
 - viewsPath indicate a directory to walk in order to load all view templates (which can see components)
-- fileExt can be ".html" (filter readed files, a value without a starting dot have one added automatically)
-- customFuncs is a [FuncMap](https://pkg.go.dev/text/template#FuncMap) to register your custom template functions
 
 The second call has the same signature as [Template.ExecuteTemplate](https://pkg.go.dev/text/template#Template.ExecuteTemplate) where viewName has no extention ("hello/index" for an index.html file in hello folder) and can have a part selector (like in "hello/index#body", without this selector "root" is used).
 
