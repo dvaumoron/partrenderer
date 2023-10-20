@@ -30,6 +30,35 @@ The first call with :
 - fileExt can be ".html" (filter readed files, a value without a starting dot have one added automatically)
 - customFuncs is a [FuncMap](https://pkg.go.dev/text/template#FuncMap) to register your custom template functions
 
-The second call has the same signature as [Template.ExecuteTemplate](https://pkg.go.dev/text/template#Template.ExecuteTemplate) where viewName has no extention ("index" for an index.html file) and can have a part selector (like in "index#body", without this selector "root" is used).
+The second call has the same signature as [Template.ExecuteTemplate](https://pkg.go.dev/text/template#Template.ExecuteTemplate) where viewName has no extention ("hello/index" for an index.html file in hello folder) and can have a part selector (like in "hello/index#body", without this selector "root" is used).
 
-Examples of templates in [componentsPath](https://github.com/dvaumoron/puzzletest/tree/main/templatedata/templates/components) and [viewsPath](https://github.com/dvaumoron/puzzletest/tree/main/templatedata/templates/views).
+With componentsPath/main.html like :
+
+```html
+{{define "root"}}
+    <html>
+        <head>
+            <meta charset="utf-8"/>
+            {{template "header" .}}
+            <title>Hello World</title>
+        </head>
+        <body>
+             {{template "body" .}}
+            <h1 class="greetings">Hello World</h1>
+        </body>
+</html>
+{{end}}
+```
+
+And viewsPath/hello/index.html like :
+
+```html
+{{define "header"}}
+    <title>Hello World</title>
+{{end}}
+{{define "body"}}
+    <h1 class="greetings">Hello World</h1>
+{{end}}
+```
+
+See advanced examples of [componentsPath](https://github.com/dvaumoron/puzzletest/tree/main/templatedata/templates/components) and [viewsPath](https://github.com/dvaumoron/puzzletest/tree/main/templatedata/templates/views) templates.
