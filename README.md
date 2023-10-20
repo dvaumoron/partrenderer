@@ -40,11 +40,9 @@ With componentsPath/main.html like :
         <head>
             <meta charset="utf-8"/>
             {{template "header" .}}
-            <title>Hello World</title>
         </head>
         <body>
              {{template "body" .}}
-            <h1 class="greetings">Hello World</h1>
         </body>
 </html>
 {{end}}
