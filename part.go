@@ -19,9 +19,8 @@
 package partrenderer
 
 import (
+	"errors"
 	"io"
-	"io/fs"
-	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -35,111 +34,120 @@ const (
 	defaultRootName  = "root"
 )
 
-type loadOptions struct {
-	fs         afero.Fs
-	fileExt    string
-	fileExtLen int
-	funcs      template.FuncMap
+var ErrViewNotFound = errors.New("view not found")
+
+// a true trigger a reload
+type ReloadRule = func(error) bool
+
+func AlwaysReload(err error) bool {
+	return true
 }
 
-type LoadOption func(loadOptions) loadOptions
+func ReloadOnViewNotFound(err error) bool {
+	return err == ErrViewNotFound
+}
 
+func NeverReload(err error) bool {
+	return false
+}
+
+type LoadOption func(loadInfos) loadInfos
+
+// option to use an alternate file system
 func WithFs(fs afero.Fs) LoadOption {
-	return func(lo loadOptions) loadOptions {
-		lo.fs = fs
-		return lo
+	return func(li loadInfos) loadInfos {
+		li.fs = fs
+		return li
 	}
 }
 
+// option to use an alternate extension to filter loaded file (default is ".html")
 func WithFileExt(ext string) LoadOption {
-	return func(lo loadOptions) loadOptions {
+	return func(li loadInfos) loadInfos {
 		if ext != "" && ext[0] != '.' {
 			ext = "." + ext
 		}
-		lo.fileExt = ext
-		lo.fileExtLen = len(ext)
-		return lo
+		li.fileExt = ext
+		li.fileExtLen = len(ext)
+		return li
 	}
 }
 
+// allow to load a template.FuncMap before parsing the go templates
 func WithFuncs(customFuncs template.FuncMap) LoadOption {
-	return func(lo loadOptions) loadOptions {
-		lo.funcs = customFuncs
-		return lo
+	return func(li loadInfos) loadInfos {
+		li.funcs = customFuncs
+		return li
+	}
+}
+
+// option to change the rule to reload on error (default is ReloadOnViewNotFound)
+func WithReloadRule(rule ReloadRule) LoadOption {
+	return func(li loadInfos) loadInfos {
+		li.reloadRule = rule
+		return li
 	}
 }
 
 type PartRenderer struct {
-	views     map[string]*template.Template
-	Separator string
-	RootName  string
+	views      *viewManager
+	reloadRule ReloadRule
+	Separator  string
+	RootName   string
 }
 
+// The componentsPath argument indicates a directory to walk in order to load all component templates
+//
+// The viewsPath argument indicates a  directory to walk in order to load all view templates (which can see components)
 func MakePartRenderer(componentsPath string, viewsPath string, opts ...LoadOption) (PartRenderer, error) {
-	options := loadOptions{fs: afero.NewOsFs(), fileExt: defaultExt, fileExtLen: defaultExtLen}
+	infos := loadInfos{
+		fs:             afero.NewOsFs(),
+		componentsPath: componentsPath,
+		viewsPath:      viewsPath,
+		fileExt:        defaultExt,
+		fileExtLen:     defaultExtLen,
+		reloadRule:     ReloadOnViewNotFound,
+	}
+
 	for _, optionModifier := range opts {
-		options = optionModifier(options)
+		infos = optionModifier(infos)
 	}
 
-	components, err := loadComponents(componentsPath, options)
+	infos, err := infos.init()
 	if err != nil {
 		return PartRenderer{}, err
 	}
 
-	views, err := loadViews(viewsPath, components, options)
+	views, err := infos.loadViews()
 	if err != nil {
 		return PartRenderer{}, err
 	}
-	return PartRenderer{views: views, Separator: defaultSeparator, RootName: defaultRootName}, nil
+
+	vm := newViewManager(views, infos)
+	return PartRenderer{views: vm, reloadRule: infos.reloadRule, Separator: defaultSeparator, RootName: defaultRootName}, nil
 }
 
+// Find a template and render it, global and partial rendering depend on PartRenderer.RootName and PartRenderer.Separator.
+// Could try a reload on error depending on the ReloadRule option.
 func (r PartRenderer) ExecuteTemplate(w io.Writer, viewName string, data any) error {
 	partName := r.RootName
 	if splitted := strings.Split(viewName, r.Separator); len(splitted) > 1 {
 		viewName, partName = splitted[0], splitted[1]
 	}
-	return r.views[viewName].ExecuteTemplate(w, partName, data)
-}
 
-func loadComponents(componentsPath string, options loadOptions) (*template.Template, error) {
-	components := template.New("").Funcs(options.funcs)
-	err := afero.Walk(options.fs, componentsPath, func(path string, fi fs.FileInfo, err error) error {
-		if err == nil && !fi.IsDir() && path[len(path)-options.fileExtLen:] == options.fileExt {
-			err = parseOne(options.fs, path, components)
+	err := r.innerExecuteTemplate(w, viewName, partName, data)
+	if err != nil && r.reloadRule(err) {
+		if err = r.views.reload(); err == nil {
+			err = r.innerExecuteTemplate(w, viewName, partName, data)
 		}
-		return err
-	})
-	// not supposed to return data on error, but it's a private function
-	return components, err
-}
-
-func loadViews(viewsPath string, components *template.Template, options loadOptions) (map[string]*template.Template, error) {
-	viewsPath, err := filepath.Abs(viewsPath)
-	if err != nil {
-		return nil, err
-	}
-	if last := len(viewsPath) - 1; viewsPath[last] != '/' {
-		viewsPath += "/"
-	}
-
-	inSize := len(viewsPath)
-	views := map[string]*template.Template{}
-	err = afero.Walk(options.fs, viewsPath, func(path string, fi fs.FileInfo, err error) error {
-		if end := len(path) - options.fileExtLen; err == nil && !fi.IsDir() && path[end:] == options.fileExt {
-			t, _ := components.Clone() // here error is always nil
-			err = parseOne(options.fs, path, t)
-			views[path[inSize:end]] = t
-		}
-		return err
-	})
-	// not supposed to return data on error, but it's a private function
-	return views, err
-}
-
-func parseOne(fs afero.Fs, path string, tmpl *template.Template) error {
-	data, err := afero.ReadFile(fs, path)
-	if err == nil {
-		_, err = tmpl.New(path).Parse(string(data))
 	}
 	return err
+}
+
+func (r PartRenderer) innerExecuteTemplate(w io.Writer, viewName string, partName string, data any) error {
+	view, err := r.views.get(viewName)
+	if err != nil {
+		return err
+	}
+	return view.ExecuteTemplate(w, partName, data)
 }

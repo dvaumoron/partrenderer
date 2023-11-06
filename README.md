@@ -4,9 +4,9 @@ Library to load several [go template](https://pkg.go.dev/text/template) decompos
 
 ## Getting started
 
-In order to use PartRenderer in your project Cornucopia (with the go langage already installed), you can use the command :
+In order to use PartRenderer in your project (with the go langage already installed), you can use the command :
 
-    go install github.com/dvaumoron/partrenderer@latest
+    go get github.com/dvaumoron/partrenderer@latest
 
 Then you can import it :
 
