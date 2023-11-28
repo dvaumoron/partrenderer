@@ -42,7 +42,7 @@ With componentsPath/main.html like :
         <body>
              {{template "body" .}}
         </body>
-</html>
+    </html>
 {{end}}
 ```
 
